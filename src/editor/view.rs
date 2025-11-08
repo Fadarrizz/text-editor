@@ -26,53 +26,47 @@ impl View {
         self.should_redraw = true;
     }
 
-    pub fn render(&mut self) -> Result<(), Error> {
+    pub fn render(&mut self) {
         if !self.should_redraw {
-            return Ok(())
+            return;
         }
 
-        self.render_buffer()?;
+        let Size { width, height } = self.size;
+        if width == 0 || height == 0 {
+            return;
+        }
 
         if self.buffer.is_empty() {
-            Self::draw_welcome_message()?;
+            self.draw_welcome_message();
+
+        } else {
+            for (idx, line) in self.buffer.lines.iter().enumerate() {
+                let truncated_line = line.get(0..width).unwrap_or(line);
+
+                Self::render_line(idx, truncated_line);
+            }
         } 
 
         self.should_redraw = false;
-
-        Ok(())
     }
 
-    fn render_buffer(&self) -> Result<(), Error> {
-        let Size { width, .. } = term::size()?;
+    fn render_line(at: usize, line_text: &str) {
+        let result = term::print_line(at, line_text);
 
-        for (idx, line) in self.buffer.lines.iter().enumerate() {
-            let truncated_line = line.get(0..width).unwrap_or(line);
-
-            Self::render_line(idx, truncated_line)?;
-        }
-
-        Ok(())
+        debug_assert!(result.is_ok(), "Failed to render line");
     }
 
-    fn render_line(at: usize, line_text: &str) -> Result<(), Error> {
-        term::move_caret_to(Position { row: at, col: 0 })?;
-        term::clear_line()?;
-        term::print(line_text)?;
-        Ok(())
-    }
-
-    fn draw_welcome_message() -> Result<(), Error> {
-        let Size { height, width } = term::size()?;
+    fn draw_welcome_message(&self) {
+        let Size { height, width } = self.size;
         let y = height / 2 - 1;
 
         let x = width / 2 - NAME.len() / 2;
-        term::move_caret_to(Position { col: x, row: y })?;
-        term::print(NAME)?;
+        let _ = term::move_caret_to(Position { col: x, row: y });
+        let _ = term::print(NAME);
 
         let x = width / 2 - VERSION.len() / 2;
-        term::move_caret_to(Position { col: x, row: y + 1 })?;
-        term::print(VERSION)?;
-        Ok(())
+        let _ = term::move_caret_to(Position { col: x, row: y + 1 });
+        let _ = term::print(VERSION);
     }
 }
 
@@ -81,7 +75,7 @@ impl Default for View {
         Self {
             buffer: Buffer::default(),
             should_redraw: true,
-            size: Size::default(),
+            size: term::size().unwrap_or_default(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
+use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
 use crossterm::{
     Command,
     cursor::{Hide, MoveTo, Show},
@@ -21,12 +21,24 @@ pub struct Position {
 
 pub fn initialize() -> Result<(), Error> {
     enable_raw_mode()?;
+    enter_alternate_screen()?;
     clear_screen()?;
     Ok(())
 }
 
 pub fn terminate() -> Result<(), Error> {
     disable_raw_mode()?;
+    leave_alternate_screen()?;
+    Ok(())
+}
+
+pub fn enter_alternate_screen() -> Result<(), Error> {
+    queue_command(EnterAlternateScreen)?;
+    Ok(())
+}
+
+pub fn leave_alternate_screen() -> Result<(), Error> {
+    queue_command(LeaveAlternateScreen)?;
     Ok(())
 }
 
@@ -56,6 +68,13 @@ pub fn hide_caret() -> Result<(), Error> {
 
 pub fn show_caret() -> Result<(), Error> {
     queue_command(Show)?;
+    Ok(())
+}
+
+pub fn print_line(row: usize, line_text: &str) -> Result<(), Error> {
+    move_caret_to(Position { row, col: 0 })?;
+    clear_line()?;
+    print(line_text)?;
     Ok(())
 }
 
