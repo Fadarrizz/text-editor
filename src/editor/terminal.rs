@@ -1,23 +1,27 @@
-use std::{fmt::Display, io::{Error, Write, stdout}};
-use crossterm::{cursor::{Hide, MoveTo, Show}, queue, style::Print};
 use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
+use crossterm::{
+    Command,
+    cursor::{Hide, MoveTo, Show},
+    queue,
+    style::Print,
+};
+use std::io::{Error, Write, stdout};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Size {
-    pub width: u16,
-    pub height: u16,
+    pub width: usize,
+    pub height: usize,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Position {
-    pub x: u16,
-    pub y: u16,
+    pub col: usize,
+    pub row: usize,
 }
 
 pub fn initialize() -> Result<(), Error> {
     enable_raw_mode()?;
     clear_screen()?;
-    move_cursor_to(Position { x: 0, y: 0 })?;
     Ok(())
 }
 
@@ -27,37 +31,49 @@ pub fn terminate() -> Result<(), Error> {
 }
 
 pub fn clear_screen() -> Result<(), Error> {
-    queue!(stdout(), Clear(ClearType::All))?;
+    queue_command(Clear(ClearType::All))?;
     Ok(())
 }
 
 pub fn clear_line() -> Result<(), Error> {
-    queue!(stdout(), Clear(ClearType::CurrentLine))?;
+    queue_command(Clear(ClearType::CurrentLine))?;
     Ok(())
 }
 
-pub fn move_cursor_to(p: Position) -> Result<(), Error> {
-    queue!(stdout(), MoveTo(p.x, p.y))?;
+/// Moves the caret to the given Position.
+/// # Arguments
+/// * `Position` - the `Position` to move the caret to. Will be truncated to `u16::MAX` if bigger.
+pub fn move_caret_to(p: Position) -> Result<(), Error> {
+    #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+    queue_command(MoveTo(p.col as u16, p.row as u16))?;
     Ok(())
 }
 
-pub fn hide_cursor() -> Result<(), Error> {
-    queue!(stdout(), Hide)?;
+pub fn hide_caret() -> Result<(), Error> {
+    queue_command(Hide)?;
     Ok(())
 }
 
-pub fn show_cursor() -> Result<(), Error> {
-    queue!(stdout(), Show)?;
+pub fn show_caret() -> Result<(), Error> {
+    queue_command(Show)?;
     Ok(())
 }
 
 pub fn size() -> Result<Size, Error> {
     let (width, height) = crossterm::terminal::size()?;
-    Ok(Size { width, height })
+    Ok(Size {
+        width: width as usize,
+        height: height as usize,
+    })
 }
 
-pub fn print<T: Display>(arg: T) -> Result<(), Error> {
-    queue!(stdout(), Print(arg))?;
+pub fn print(string: &str) -> Result<(), Error> {
+    queue_command(Print(string))?;
+    Ok(())
+}
+
+fn queue_command(command: impl Command) -> Result<(), Error> {
+    queue!(stdout(), command)?;
     Ok(())
 }
 

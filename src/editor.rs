@@ -1,17 +1,35 @@
-use crossterm::event::{Event, KeyEvent, KeyModifiers, read, Event::Key, KeyCode::Char};
+use crossterm::event::{Event, KeyCode, KeyEvent, read};
 mod terminal;
+mod view;
+use std::{cmp::min, io::Error, path::PathBuf};
 use terminal as term;
-use std::io::Error;
+use terminal::{Position, Size};
+use view::View;
 
-use crate::editor::terminal::Size;
+use crate::Args;
 
+#[derive(Default)]
 pub struct Editor {
     should_quit: bool,
+    position: Position,
+    view: View,
 }
 
 impl Editor {
-    pub const fn default() -> Self {
-        Self { should_quit: false }
+    pub fn new(args: &Args) -> Result<Self, Error> {
+        let mut editor = Editor::default();
+
+        if let Some(file) = args.files.get(1) {
+            editor.open(file)?;
+        }
+
+        Ok(editor)
+    }
+
+    pub fn open(&mut self, path: &PathBuf) -> Result<(), Error> {
+        let view = View::load(path)?;
+        self.view = view;
+        Ok(())
     }
 
     pub fn run(&mut self) {
@@ -25,7 +43,7 @@ impl Editor {
         loop {
             self.refresh_screen()?;
             let event = read()?;
-            self.evaluate_event(&event);
+            self.evaluate_event(&event)?;
             if self.should_quit {
                 break;
             }
@@ -33,34 +51,68 @@ impl Editor {
         Ok(())
     }
 
-    fn evaluate_event(&mut self, event: &Event) {
-        if let Key(KeyEvent { code: Char('q'), modifiers: KeyModifiers::CONTROL, .. }) = event {
-            self.should_quit = true;
-        }
-    }
-
-    fn refresh_screen(&self) -> Result<(), Error> {
-        term::hide_cursor()?;
+    fn refresh_screen(&mut self) -> Result<(), Error> {
+        term::hide_caret()?;
+        term::move_caret_to(Position::default())?;
         if self.should_quit {
             term::clear_screen()?;
             term::print("Goodbye.\r\n")?;
         } else {
-            Self::draw_rows()?;
-            term::move_cursor_to(terminal::Position{x:0, y:0})?;
+            self.view.render()?;
+            term::move_caret_to(self.position)?;
         }
-        term::show_cursor()?;
+        term::show_caret()?;
         term::execute()?;
         Ok(())
     }
 
-    fn draw_rows() -> Result<(), Error> {
-        let Size{height, ..} = term::size()?;
-        for row in 0..height {
-            term::clear_line()?;
-            term::print("~")?;
-            if row + 1 < height {
-                term::print("\r\n")?;
+    fn move_cursor(&mut self, key_code: KeyCode) -> Result<(), Error> {
+        let Position {
+            col: mut x,
+            row: mut y,
+        } = self.position;
+        let Size { width, height } = term::size()?;
+
+        match key_code {
+            KeyCode::Char('h') => {
+                x = x.saturating_sub(1);
             }
+            KeyCode::Char('j') => {
+                y = min(height, y.saturating_add(1));
+            }
+            KeyCode::Char('k') => {
+                y = y.saturating_sub(1);
+            }
+            KeyCode::Char('l') => {
+                x = min(width, x.saturating_add(1));
+            }
+            _ => (),
+        }
+        self.position = Position { col: x, row: y };
+
+        Ok(())
+    }
+
+    fn evaluate_event(&mut self, event: &Event) -> Result<(), Error> {
+        match event {
+            Event::Key(KeyEvent { code, .. }) => {
+                match code {
+                    KeyCode::Esc => {
+                        self.should_quit = true;
+                    }
+                    KeyCode::Char('h' | 'j' | 'k' | 'l') => {
+                        self.move_cursor(*code)?;
+                    }
+                    _ => {},
+                }
+            },
+            Event::Resize(width_u16, height_u16) => {
+                self.view.resize(Size {
+                    width: *width_u16 as usize,
+                    height: *height_u16 as usize,
+                });
+            },
+            _ => {},
         }
         Ok(())
     }
